@@ -349,6 +349,7 @@
                 </div>
                 <div style="display:flex;gap:8px;justify-content:center;align-items:center;">
                     <input id="join-code-input" maxlength="6" placeholder="ENTER CODE"
+                        onkeydown="if(event.key==='Enter') mpJoin()" oninput="this.value=this.value.toUpperCase()"
                         style="background:#0a0a1a;border:1px solid #2dc653;color:#2dc653;font-family:'Bungee',cursive;font-size:20px;padding:8px 12px;width:150px;letter-spacing:4px;text-align:center;border-radius:4px;outline:none;" />
                     <button class="btn" onclick="mpJoin()"
                         style="background:#2dc653;font-size:14px;padding:10px 20px;">JOIN</button>
@@ -448,12 +449,19 @@
 
         const keys = {};
         document.addEventListener('keydown', e => {
+            // Don't capture keys when typing in an input field
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
             keys[e.key] = true;
         });
-        document.addEventListener('keyup', e => { keys[e.key] = false; });
-        // Make sure canvas has focus for key events
-        document.addEventListener('click', () => canvas.focus());
+        document.addEventListener('keyup', e => {
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+            keys[e.key] = false;
+        });
+        // Make sure canvas has focus for key events (but not when an input is active)
+        document.addEventListener('click', e => {
+            if (e.target.tagName !== 'INPUT') canvas.focus();
+        });
 
         // ===================== LEVELS =====================
         const LEVELS = [
