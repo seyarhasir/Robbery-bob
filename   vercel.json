@@ -1,0 +1,27 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "api/signal.js",
+            "use": "@vercel/node"
+        },
+        {
+            "src": "robbery-bob.html",
+            "use": "@vercel/static"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/signal",
+            "dest": "/api/signal.js"
+        },
+        {
+            "src": "/",
+            "dest": "/robbery-bob.html"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/robbery-bob.html"
+        }
+    ]
+}
