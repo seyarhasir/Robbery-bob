@@ -334,11 +334,13 @@
                 <button class="btn" id="btn-host" onclick="mpHost()" style="font-size:14px;padding:10px 24px;">Generate
                     Room Code</button>
                 <div id="host-code-area" style="display:none;margin-top:12px;">
-                    <div style="color:#888;font-size:11px;margin-bottom:4px;">Share this code with your partner:</div>
+                    <div style="color:#888;font-size:11px;margin-bottom:6px;">Send this code to your partner:</div>
                     <div id="host-code"
-                        style="font-family:'Bungee',cursive;font-size:36px;color:#f5c518;letter-spacing:8px;text-shadow:0 0 20px #f5c518aa;">
-                    </div>
-                    <div id="host-status" style="color:#888;font-size:11px;margin-top:8px;">Waiting for partner...</div>
+                        onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent).then(()=>{this.style.color='#2dc653';setTimeout(()=>this.style.color='#f5c518',1000)})"
+                        style="font-family:'Bungee',cursive;font-size:42px;color:#f5c518;letter-spacing:10px;text-shadow:0 0 30px #f5c518bb;cursor:pointer;padding:6px 0;"
+                        title="Click to copy"></div>
+                    <div style="color:#444;font-size:10px;margin-bottom:6px;">Click code to copy</div>
+                    <div id="host-status" style="color:#888;font-size:12px;margin-top:4px;">Waiting for partner...</div>
                 </div>
             </div>
 
@@ -1408,8 +1410,29 @@
         }
 
         // ===================== P2P MULTIPLAYER (PeerJS WebRTC) =====================
-        let peer = null, mpConn = null, mpRole = null; // 'host' | 'peer'
-        let p2 = null; // remote player 2 state
+        let peer = null, mpConn = null, mpRole = null;
+        let p2 = null;
+
+        // PeerJS server config — tries multiple reliable brokers
+        const PEER_CONFIG = {
+            host: '0.peerjs.com',
+            port: 443,
+            path: '/',
+            secure: true,
+            debug: 0,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ]
+            }
+        };
+
+        function mpStatus(el, msg, color = '#888') {
+            const e = document.getElementById(el);
+            if (e) { e.textContent = msg; e.style.color = color; }
+        }
 
         function showMultiplayerInfo() {
             document.getElementById('mp-modal').style.display = 'flex';
@@ -1418,98 +1441,159 @@
         function mpClose() {
             document.getElementById('mp-modal').style.display = 'none';
             if (peer && !mpConn) { peer.destroy(); peer = null; }
+            // reset UI
+            document.getElementById('host-code-area').style.display = 'none';
+            document.getElementById('btn-host').style.display = 'inline-block';
+            document.getElementById('btn-host').disabled = false;
+            document.getElementById('btn-host').textContent = 'Generate Room Code';
+            mpStatus('host-status', 'Waiting for partner...');
+            mpStatus('join-status', '');
         }
 
-        function mpCodeFromId(id) { return id.replace('robberybob-', '').toUpperCase(); }
-        function mpIdFromCode(code) { return 'robberybob-' + code.toLowerCase(); }
+        function mpIdFromCode(code) { return 'rbbob-' + code.toLowerCase().replace(/[^a-z0-9]/g, ''); }
+        function mpCodeFromId(id) { return id.replace('rbbob-', '').toUpperCase(); }
 
         function mpHost() {
-            document.getElementById('btn-host').disabled = true;
-            document.getElementById('btn-host').textContent = 'Connecting...';
-            const code = Math.random().toString(36).substr(2, 4).toUpperCase();
-            const peerId = mpIdFromCode(code);
-            peer = new Peer(peerId, { debug: 0 });
-            peer.on('open', () => {
+            if (peer) { peer.destroy(); peer = null; }
+            const btn = document.getElementById('btn-host');
+            btn.disabled = true; btn.textContent = 'Connecting...';
+            mpStatus('host-status', 'Connecting to server...', '#f5c518');
+
+            // Generate a simple 4-char alphanumeric code
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+
+            peer = new Peer(mpIdFromCode(code), PEER_CONFIG);
+
+            const timeout = setTimeout(() => {
+                if (!document.getElementById('host-code-area').style.display || document.getElementById('host-code-area').style.display === 'none') {
+                    mpStatus('host-status', '❌ Server timeout. Try again.', '#e63946');
+                    btn.disabled = false; btn.textContent = 'Generate Room Code';
+                    peer.destroy(); peer = null;
+                }
+            }, 8000);
+
+            peer.on('open', id => {
+                clearTimeout(timeout);
                 document.getElementById('host-code').textContent = code;
                 document.getElementById('host-code-area').style.display = 'block';
-                document.getElementById('btn-host').style.display = 'none';
+                btn.style.display = 'none';
+                mpStatus('host-status', '⏳ Waiting for partner to join...', '#f5c518');
             });
+
             peer.on('connection', conn => {
                 mpConn = conn; mpRole = 'host';
-                document.getElementById('host-status').textContent = '✅ Partner connected! Starting...';
-                document.getElementById('host-status').style.color = '#2dc653';
-                mpConn.on('data', mpOnData);
-                mpConn.on('close', mpOnDisconnect);
-                setTimeout(() => {
-                    document.getElementById('mp-modal').style.display = 'none';
-                    startGame(1);
-                }, 800);
+                mpStatus('host-status', '✅ Partner connected! Starting...', '#2dc653');
+                conn.on('open', () => {
+                    conn.on('data', mpOnData);
+                    conn.on('close', mpOnDisconnect);
+                    conn.on('error', e => mpStatus('host-status', '⚠️ Connection error', '#e63946'));
+                    setTimeout(() => {
+                        mpSend({ type: 'startLevel', level: 1 });
+                        document.getElementById('mp-modal').style.display = 'none';
+                        startGame(1);
+                    }, 600);
+                });
             });
+
             peer.on('error', e => {
-                document.getElementById('host-status').textContent = '❌ Error: ' + e.type;
-                document.getElementById('host-status').style.color = '#e63946';
-                document.getElementById('btn-host').disabled = false;
-                document.getElementById('btn-host').textContent = 'Generate Room Code';
+                clearTimeout(timeout);
+                const msg = e.type === 'unavailable-id' ? '❌ Code taken, try again' :
+                    e.type === 'network' ? '❌ Network error' :
+                        e.type === 'server-error' ? '❌ Server error, try again' : '❌ ' + e.type;
+                mpStatus('host-status', msg, '#e63946');
+                btn.disabled = false; btn.textContent = 'Generate Room Code';
+                btn.style.display = 'inline-block';
+                document.getElementById('host-code-area').style.display = 'none';
+                if (peer) { peer.destroy(); peer = null; }
             });
         }
 
         function mpJoin() {
-            const code = document.getElementById('join-code-input').value.trim().toUpperCase();
-            if (code.length < 4) { document.getElementById('join-status').textContent = 'Enter a 4-letter code'; return; }
-            document.getElementById('join-status').textContent = 'Connecting...';
-            document.getElementById('join-status').style.color = '#f5c518';
-            if (peer) peer.destroy();
-            peer = new Peer(undefined, { debug: 0 });
-            peer.on('open', () => {
-                const conn = peer.connect(mpIdFromCode(code), { reliable: true });
+            const raw = document.getElementById('join-code-input').value.trim().toUpperCase();
+            const code = raw.replace(/[^A-Z0-9]/g, '');
+            if (code.length < 4) { mpStatus('join-status', '⚠️ Enter the 4-character code', '#f5c518'); return; }
+
+            mpStatus('join-status', '🔌 Connecting...', '#f5c518');
+            if (peer) { peer.destroy(); peer = null; }
+
+            peer = new Peer(undefined, PEER_CONFIG);
+
+            const timeout = setTimeout(() => {
+                mpStatus('join-status', '❌ Timeout — is the host waiting?', '#e63946');
+                if (peer) { peer.destroy(); peer = null; }
+            }, 10000);
+
+            peer.on('open', myId => {
+                const hostId = mpIdFromCode(code);
+                const conn = peer.connect(hostId, { reliable: true, serialization: 'json' });
                 mpConn = conn; mpRole = 'peer';
+
+                const connTimeout = setTimeout(() => {
+                    if (!conn.open) {
+                        clearTimeout(timeout);
+                        mpStatus('join-status', '❌ Could not reach host. Check code.', '#e63946');
+                        conn.close(); if (peer) { peer.destroy(); peer = null; }
+                    }
+                }, 8000);
+
                 conn.on('open', () => {
-                    document.getElementById('join-status').textContent = '✅ Connected! Host is starting...';
-                    document.getElementById('join-status').style.color = '#2dc653';
+                    clearTimeout(timeout); clearTimeout(connTimeout);
+                    mpStatus('join-status', '✅ Connected! Waiting for host...', '#2dc653');
                     conn.on('data', mpOnData);
                     conn.on('close', mpOnDisconnect);
+                    conn.on('error', () => mpStatus('join-status', '⚠️ Connection dropped', '#e63946'));
                 });
-                conn.on('error', () => {
-                    document.getElementById('join-status').textContent = '❌ Could not connect. Check the code.';
-                    document.getElementById('join-status').style.color = '#e63946';
+
+                conn.on('error', e => {
+                    clearTimeout(timeout); clearTimeout(connTimeout);
+                    mpStatus('join-status', '❌ Connection failed: ' + e.type, '#e63946');
                 });
             });
+
             peer.on('error', e => {
-                document.getElementById('join-status').textContent = '❌ ' + e.type;
-                document.getElementById('join-status').style.color = '#e63946';
+                clearTimeout(timeout);
+                const msg = e.type === 'network' ? '❌ No internet / blocked' :
+                    e.type === 'peer-unavailable' ? '❌ Host not found. Check code.' : '❌ ' + e.type;
+                mpStatus('join-status', msg, '#e63946');
+                if (peer) { peer.destroy(); peer = null; }
             });
         }
 
         function mpOnData(data) {
+            if (!data || !data.type) return;
             if (data.type === 'startLevel') {
                 document.getElementById('mp-modal').style.display = 'none';
-                startGame(data.level);
+                startGame(data.level || 1);
             } else if (data.type === 'pos' && state) {
-                // update remote player position
-                if (!p2) p2 = { x: data.x, y: data.y, sneaking: data.sneaking, score: 0 };
-                else { p2.x = data.x; p2.y = data.y; p2.sneaking = data.sneaking; }
+                if (!p2) p2 = { x: data.x, y: data.y, sneaking: !!data.sneaking };
+                else { p2.x = data.x; p2.y = data.y; p2.sneaking = !!data.sneaking; }
             } else if (data.type === 'loot' && state) {
-                // remote collected loot
-                if (state.loot[data.idx]) state.loot[data.idx].collected = true;
-            } else if (data.type === 'nextLevel' && state) {
-                const nextLv = data.level;
-                if (nextLv <= LEVELS.length) startGame(nextLv);
+                const idx = data.idx;
+                if (state.loot[idx] && !state.loot[idx].collected) {
+                    state.loot[idx].collected = true;
+                }
+            } else if (data.type === 'nextLevel') {
+                const next = data.level;
+                if (next && next <= LEVELS.length) startGame(next);
+                else startGame(1);
             }
         }
 
         function mpOnDisconnect() {
             mpConn = null; p2 = null;
-            if (state) showOverlay('caught', 'PARTNER LEFT', 'Your co-op partner disconnected.', () => { mpConn = null; p2 = null; startGame(1); }, 'RESTART');
+            if (state && !state.gameOver && !state.won)
+                showOverlay('caught', 'PARTNER LEFT', 'Your co-op partner disconnected.', () => { startGame(state ? state.level : 1); }, 'RESTART');
         }
 
         function mpSend(data) {
-            if (mpConn && mpConn.open) try { mpConn.send(data); } catch (e) { }
+            if (mpConn && mpConn.open) try { mpConn.send(data); } catch (e) { console.warn('mpSend fail', e); }
         }
 
-        // Call this every frame to broadcast Bob's position
         function mpBroadcastPos() {
-            if (!mpConn || !state) return;
-            mpSend({ type: 'pos', x: state.bob.x, y: state.bob.y, sneaking: state.sneaking });
+            if (!mpConn || !mpConn.open || !state) return;
+            mpSend({ type: 'pos', x: Math.round(state.bob.x), y: Math.round(state.bob.y), sneaking: !!state.sneaking });
         }
 
         function showOverlay(type, title, msg, onBtn, btnLabel = 'TRY AGAIN') {
