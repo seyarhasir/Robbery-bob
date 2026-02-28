@@ -1,32 +1,23 @@
-# Robbery Bob — King of Sneak
+# Robbery Bob — Deploy to Cloudflare
 
-## Deploy to Vercel
+## 3 steps, takes 2 minutes
 
-1. Create a new folder and put these files in it:
-   ```
-   robbery-bob.html
-   vercel.json
-   api/
-     signal.js
-   ```
+1. Go to **https://workers.cloudflare.com**
+   - Sign up free (or log in)
+   - Click **"Create application"** → **"Create Worker"**
 
-2. Push to GitHub (or drag-and-drop to Vercel dashboard)
+2. **Delete** all the default code in the editor
+   - **Paste** the entire contents of `worker.js`
+   - Click **"Save and Deploy"**
 
-3. Deploy → Vercel auto-detects the config
+3. **Done!** Cloudflare gives you a URL like:
+   `https://robbery-bob.YOUR-NAME.workers.dev`
 
-4. Share your Vercel URL with a friend → click **🌐 MULTIPLAYER** → Host generates a code → Friend joins!
+Share that URL — multiplayer works instantly, no extra setup.
 
 ## How multiplayer works
-
-- **Host** clicks "Generate Room Code" → gets a 4-letter code (e.g. `X7KQ`)
-- **Host shares the code** with their friend
-- **Friend** enters the code and clicks Join
-- The `/api/signal` serverless function relays the WebRTC SDP handshake
-- Once connected, all game data flows **peer-to-peer** (WebRTC DataChannel) — no server load
-
-## Controls
-
-| Player | Move | Sneak |
-|--------|------|-------|
-| P1 | WASD / Arrow Keys | Shift |
-| P2 | Remote (their own keyboard) | Shift |
+- Host clicks 🌐 MULTIPLAYER → Generate Room Code → gets a 4-letter code
+- Host sends code to friend (WhatsApp, etc.)
+- Friend opens same URL → MULTIPLAYER → types code → JOIN
+- The Worker relays the WebRTC handshake (tiny SDP strings)
+- Once connected, all game data is direct peer-to-peer — zero server load
